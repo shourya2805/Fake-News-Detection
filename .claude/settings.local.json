@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('/Users/shouryakorrapati/Desktop/FakeNews/data/data.json'\\)\\);print\\(len\\(d\\)\\);print\\(json.dumps\\(d[0],ensure_ascii=False\\)[:400]\\)\")",
+      "Bash(python3 -V)",
+      "Bash(python3 -c \"import torch,transformers,sklearn,tqdm,numpy;print\\('torch',torch.__version__,'mps',torch.backends.mps.is_available\\(\\)\\);print\\('tf',transformers.__version__\\)\")"
+    ]
+  }
+}
