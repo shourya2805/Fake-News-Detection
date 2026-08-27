@@ -80,3 +80,51 @@ the following implementation details are ours:
   frozen and each record is encoded independently).
 - **Empty transcripts skip BERT entirely** and are written as all-zero embedding +
   all-zero mask, asserted after saving.
+
+## Metrics — averaging convention (the single most consequential choice)
+- **Macro-averaged over the real and fake classes is reported as PRIMARY**;
+  fake-class-only numbers are reported alongside. The paper says only
+  "Accuracy, F1, Precision, Recall".
+
+  Evidence that macro is what the paper used: the test set is 62.7% fake, and a
+  degenerate "predict everything fake" model scores **fake-class F1 = 77.05**,
+  already *above* the paper's reported 71.94. Any usable model must therefore
+  exceed that, so the paper's F1 cannot be fake-class F1. Macro F1 for that same
+  degenerate model is 38.53, and the paper's four numbers cluster tightly
+  (72.50 / 71.94 / 72.11 / 73.56), which is the signature of macro averaging.
+
+  Under macro, our reproduction lands within +6.4% / -0.1% of every target.
+  Under fake-class-only it does not (F1 +15.2%, Recall +19.6%). Both are printed
+  so the choice is auditable.
+- **"Fake" (`label == "false"`) is the positive class**, per CLAUDE.md.
+- **Per-category subset = all real test samples + only that category's fakes**,
+  as CLAUDE.md specifies. Category subsets therefore overlap on the real samples
+  and are not independent.
+
+## Training (`train.py`)
+- **Seed 42** for Python/NumPy/torch/MPS and the train DataLoader shuffle.
+- **No weight decay, no LR scheduler, no gradient clipping, no early stopping** —
+  the paper specifies none of these (CLAUDE.md's suggested defaults).
+- **Best checkpoint selected by validation macro F1**, evaluated after every
+  epoch; the full 30 epochs are always run. This matters: both runs overfit
+  hard (minimum val loss at epoch 6 / 9, train loss reaching ~0.02 by epoch 30),
+  so reporting the epoch-30 model instead would understate the result. The paper
+  does not say which epoch's model it reports.
+- **`drop_last=False`** — with 1675 train samples at batch 128 the last batch has
+  27 samples; dropping it would waste 1.6% of the training data.
+- **Model selection and all reported numbers use the test split only once**, after
+  the checkpoint is chosen on validation.
+
+## Leakage reporting
+- **A transcript-presence-only baseline** (predict fake iff a transcript exists,
+  reading no text at all) is computed and reported. It is not requested by the
+  paper or CLAUDE.md; it quantifies how much of any per-category score could come
+  from the missingness pattern alone.
+- **Observed result contradicts the expectation in CLAUDE.md.** Supplying
+  `has_transcript` explicitly *lowers* macro F1 (overall -1.91, SV -1.81), and the
+  presence-only baseline scores 52.5% accuracy on the SV subset — near chance.
+  Reason: an empty transcript is already an all-zero embedding with an all-zero
+  mask, so the network can detect missingness from its input whether or not the
+  flag is passed; and 65% of *real* samples also have transcripts, so presence is
+  not by itself a discriminative shortcut. The correlation is real and documented,
+  but it is not a large exploitable leak on this split.

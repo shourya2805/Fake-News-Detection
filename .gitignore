@@ -6,3 +6,5 @@ features/
 __pycache__/
 *.pyc
 .venv/
+checkpoints/
+results.json
