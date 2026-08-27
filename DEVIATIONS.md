@@ -47,3 +47,20 @@ the following implementation details are ours:
   layer keeps the rest of the network identical between the two runs.
 - **`num_classes = 2` with cross-entropy over logits** (not a 1-logit sigmoid),
   matching the authors' `Linear(dim, 2)`.
+
+## Data splits (`dataset.py`)
+- **70 / 15 / 15 train / val / test, `seed = 42`.** The paper specifies no split
+  ratio, seed, or protocol.
+- **Stratified on the 5-way category label (REAL/CD/CE/SV/CA), not on the binary
+  real/fake label.** Per-category evaluation needs each split to contain a
+  representative number of CD/CE/SV/CA fakes; binary stratification could leave a
+  split with too few CA samples (only 150 exist in total). Resulting per-split
+  fake rate is 62.7% in all three splits.
+- **Split is a single fixed partition, not k-fold cross-validation.** The paper
+  does not say which it used.
+- **Records are keyed by their position in `data.json`**, and that index is what
+  the cached feature arrays are indexed by, so splits and features stay aligned.
+- **`contextual_class` (action/event/object) is ignored** — it is metadata, not a
+  training target, per CLAUDE.md.
+- **Whitespace-only transcripts count as missing** (`.strip()` before the
+  emptiness test), so they get the all-zero embedding + all-zero mask path.
