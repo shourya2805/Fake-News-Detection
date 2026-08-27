@@ -64,3 +64,19 @@ the following implementation details are ours:
   training target, per CLAUDE.md.
 - **Whitespace-only transcripts count as missing** (`.strip()` before the
   emptiness test), so they get the all-zero embedding + all-zero mask path.
+
+## Feature extraction (`extract_features.py`)
+- **`bert-base-uncased`** (the paper says "BERT" with a 768-d hidden size but not
+  which checkpoint); one shared frozen instance encodes both title and transcript,
+  as the paper states the weights are shared.
+- **`last_hidden_state` is cached, not the pooler output** — the model needs
+  token-level `(L, 768)` sequences for co-attention.
+- **Padding to `max_length` with truncation** (32 / 64 tokens). Padded positions
+  are zeroed in the saved embedding as well as excluded by the attention mask, so
+  padding cannot leak through pooling.
+- **float32 on disk (707 MB total).** float16 would halve it, but exact-value
+  caching keeps the training run bit-identical to an uncached run.
+- **Extraction batch size 32** — an I/O detail with no effect on results (BERT is
+  frozen and each record is encoded independently).
+- **Empty transcripts skip BERT entirely** and are written as all-zero embedding +
+  all-zero mask, asserted after saving.
