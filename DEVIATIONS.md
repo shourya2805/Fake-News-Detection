@@ -31,3 +31,19 @@ the following implementation details are ours:
   through as `LayerNorm(residual)` only. The paper does not discuss empty inputs.
 - **`v_len`/`s_len` accept an int, a `(B,)` length tensor, or a `(B, L)` attention
   mask.** The authors' call site does not reveal which was intended.
+
+## Model (`model.py`)
+- **`TransformerEncoderLayer` uses PyTorch defaults** for everything the authors'
+  file does not set: `dim_feedforward=2048`, `dropout=0.1`, ReLU, post-norm. The
+  2048-wide FFN dominates the parameter count (527K of 923K total). CLAUDE.md's
+  "~500K params" estimate is therefore low; the architecture as specified gives
+  **922,754** parameters.
+- **Masked mean pooling** over the token dimension (padded positions excluded)
+  rather than a plain mean. A plain mean would dilute every short title with
+  padding, and would make an all-zero transcript contribute a spurious constant.
+- **`has_transcript` is injected as a single scalar concatenated to the fused
+  128-d vector**, giving `Linear(129, 2)`. The paper has no such feature at all;
+  this is the leakage probe required by CLAUDE.md. Concatenating at the last
+  layer keeps the rest of the network identical between the two runs.
+- **`num_classes = 2` with cross-entropy over logits** (not a 1-logit sigmoid),
+  matching the authors' `Linear(dim, 2)`.
