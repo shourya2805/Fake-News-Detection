@@ -206,3 +206,63 @@ Per-video numbers are in `verify_results.txt`.
   partway through `_HC36OnL-6c` (REAL). `_mJs-T-aH14` (SV) was detected as
   Norwegian Nynorsk and returned 23 tokens. These lower the means but no
   category's conclusion depends on them.
+
+### X-hosted videos
+- **Sample.** First X-hosted records (in `data.json` order) with a non-empty
+  transcript, downloaded with `--cookies-from-browser chrome` until 10 per class
+  succeeded: REAL, CD, CA.
+- **Download failures.** 7 of 37 attempts (18.9%): REAL 5/15, CD 1/11, CA 1/11.
+  Every failure was yt-dlp "No video could be found in this tweet", i.e. the
+  post or its media is gone. No auth or rate-limit failures. Failed posts
+  date from 2019-2022 (REAL 2019-2020). Candidates were taken in `data.json`
+  order, which sorts X IDs by age, so this sample over-represents older posts
+  and the full-download failure rate may differ.
+- **Results (chance baseline computed within each host).**
+
+| Category | Host | n | overlap mean | overlap median | overlap chance | difflib mean | difflib median | difflib chance |
+|---|---|---|---|---|---|---|---|---|
+| REAL | YouTube | 10 | 0.781 | 0.940 | 0.189 | 0.780 | 0.924 | 0.046 |
+| REAL | X | 10 | 0.925 | 0.951 | 0.236 | 0.926 | 0.947 | 0.056 |
+| CD | YouTube | 10 | 0.843 | 0.921 | 0.221 | 0.841 | 0.931 | 0.053 |
+| CD | X | 10 | 0.858 | 0.939 | 0.248 | 0.845 | 0.929 | 0.054 |
+| CA | YouTube | 10 | 0.961 | 0.966 | 0.196 | 0.958 | 0.963 | 0.050 |
+| CA | X | 10 | 0.606 | 0.739 | 0.248 | 0.494 | 0.528 | 0.041 |
+
+- **CA on X is a measurement limit, not a mismatch.** Six of the ten CA X
+  records have stored transcripts of 5-26 tokens (mostly non-speech clips), and
+  one is Chinese, which the ASCII-only normaliser reduces to zero tokens.
+  Restricted to stored transcripts of 30+ tokens, CA X scores 0.955 overlap /
+  0.772 difflib (n=4), REAL X 0.925 / 0.926 (n=10), CD X 0.949 / 0.940 (n=8).
+  X posts match the dataset for REAL and CD; CA X is consistent with a match but
+  only 4 videos are testable.
+
+### SV trim check
+Ratio of Whisper token count on the public video to the stored transcript's
+token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
+0.53-1.21.
+
+- SV, sorted: 0.54 (`_mJs-T-aH14`, re-transcribed with language forced to
+  English; auto-detection gave 0.17), 0.96, 0.97, 1.16, 1.27, 1.33, 1.35, 1.42,
+  2.06, 2.23. Median 1.30.
+- **3 of 10 look intact** (0.96-1.16, inside the matched-category range),
+  2 look trimmed (~2x), 4 are ambiguous (1.27-1.42), 1 is unmeasurable (public
+  audio has little recognisable speech).
+- Supporting measure: stored-transcript tokens per second of the *public*
+  video's duration is median 1.67 for SV vs 2.27-2.91 for REAL/CD/CA, consistent
+  with most SV dataset clips being shorter than the public post.
+- Caveat: a VITS voiceover of rewritten text need not match the original's word
+  rate, so this is a proxy for clip length, not a frame-level check.
+
+## Visual-branch experiment design
+- **CE (450 records) is EXCLUDED from the visual-branch experiment entirely,
+  not masked.** Giving CE all-zero visual features would make video-absence a
+  near-perfect CE predictor — the same class of shortcut as the transcript gap,
+  but stronger. Excluding CE removes the shortcut at the cost of sample size.
+- **The visual experiment runs on REAL + CD + CA (1,643 records), plus SV (300)
+  only if the trim check supports it, and only on records whose video downloaded
+  successfully.** Every sample in that experiment has real video, so there is no
+  visual missingness and no mask leakage.
+- **SV status: the trim check does not support inclusion** (3 of 10 intact).
+  SV is out of the visual experiment unless a per-video length filter is adopted.
+- **The text-only reproduction on all 2,393 records is unaffected and remains
+  the headline result.**

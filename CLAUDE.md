@@ -339,6 +339,16 @@ change.
 - If something in the paper is ambiguous, do not guess silently. Write the
   assumption into `DEVIATIONS.md` and mention it.
 
+## Output conventions
+
+- When you change CLAUDE.md, DEVIATIONS.md, README.md or any other .md file,
+  do NOT print the file contents. Make the edit and report it in one line:
+  which file, what changed.
+- When you change a .py file, show the full file.
+- Never print a file just to confirm you wrote it.
+- Do not echo results.json, coverage.json, failed.csv or any other generated
+  file. Print the summary table only.
+
 ## Things that are already decided — do not revisit
 
 - Phase 1 (title + audio) is complete and is the ablation baseline. Settled.
