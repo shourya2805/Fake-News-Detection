@@ -9,8 +9,17 @@ Appended to as the reproduction is built.
 - **Python 3.13 / venv at `.venv/`** — paper states no interpreter or dependency
   versions. Installed: torch 2.13.0, transformers 5.16.1, numpy 2.5.2,
   scikit-learn 1.9.0.
-- **Device: `mps` when available, else `cpu`.** The paper does not state hardware;
-  CLAUDE.md forbids CUDA since the team is on Macs.
+- **Device: `cuda` if available, else `mps`, else `cpu`.** The paper does not
+  state hardware. CUDA was added so the same code runs on Google Colab; the
+  Phase 1 results were produced on `mps`.
+- **Determinism (`determinism.py`).** Seeds are pinned for Python, NumPy and
+  torch (CPU/CUDA/MPS), `PYTHONHASHSEED` is set, cuDNN is deterministic with
+  benchmarking off, and `torch.use_deterministic_algorithms(True,
+  warn_only=True)` is on (`warn_only` because MPS lacks deterministic versions
+  of some ops). Every DataLoader gets a seeded generator and `worker_init_fn`.
+  Two consecutive runs of `train.py` on `mps` produce byte-identical
+  `results.json`. Results across devices (CPU vs MPS vs CUDA) are not
+  guaranteed to match.
 
 ## Co-attention module (`modules/coattention.py`)
 The paper gives only equations 5-7 and the authors never uploaded the file, so

@@ -1,6 +1,8 @@
 # data + cached features are large / not ours to redistribute
 data/
 features/
+videos/
+features/video/
 
 # python
 __pycache__/

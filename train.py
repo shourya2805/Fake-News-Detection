@@ -19,7 +19,6 @@ import argparse
 import copy
 import json
 import os
-import random
 
 import numpy as np
 import torch
@@ -30,6 +29,7 @@ from torch.utils.data import DataLoader
 
 from dataset import (FAKE_CATEGORIES, FMNVDDataset, SEED, load_features,
                      load_records, make_splits)
+from determinism import make_generator, seed_worker, set_seed
 from model import FMNVD
 from utils import get_device
 
@@ -42,14 +42,6 @@ RESULTS_PATH = "results.json"
 # paper Table 4, "w/o Frames" row
 TARGETS = {"accuracy": 72.50, "f1": 71.94, "precision": 72.11, "recall": 73.56}
 METRIC_KEYS = ("accuracy", "f1", "precision", "recall")
-
-
-def set_seed(seed):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.backends.mps.is_available():
-        torch.mps.manual_seed(seed)
 
 
 def metrics(y_true, y_pred):
@@ -149,10 +141,10 @@ def run_experiment(use_flag, splits, features, device, epochs, seed):
     loaders = {}
     for name in ("train", "val", "test"):
         ds = FMNVDDataset(splits[name], features=features)
-        g = torch.Generator().manual_seed(seed)
         loaders[name] = DataLoader(
             ds, batch_size=BATCH_SIZE, shuffle=(name == "train"),
-            generator=g if name == "train" else None, drop_last=False,
+            generator=make_generator(seed), worker_init_fn=seed_worker,
+            drop_last=False,
         )
 
     model = FMNVD(use_has_transcript=use_flag).to(device)
@@ -280,6 +272,7 @@ def main():
     ap.add_argument("--device", default=None, help="override (mps/cpu)")
     args = ap.parse_args()
 
+    set_seed(args.seed)
     device = torch.device(args.device) if args.device else get_device()
     records = load_records()
     splits = make_splits(records, seed=args.seed)

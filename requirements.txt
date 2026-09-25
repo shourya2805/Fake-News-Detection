@@ -3,3 +3,6 @@ transformers
 numpy
 scikit-learn
 tqdm
+yt-dlp
+opencv-python
+open_clip_torch
