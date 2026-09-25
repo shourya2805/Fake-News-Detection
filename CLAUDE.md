@@ -51,8 +51,19 @@ contribution of the visual branch is visible.
 
 ### Still do NOT
 
-- use Whisper (transcripts are already provided in `data.json`)
+- use Whisper as a transcription step. Model inputs always come from the
+  `audio_transcript` field in `data.json`. Whisper (faster-whisper, base) is a
+  dataset verification tool only, used by `verify_downloads.py` to check that a
+  downloaded video matches the version the dataset was built from.
+- use the audio track of any downloaded video as a model input
 - commit videos or extracted features to git
+
+### Video provenance (see DEVIATIONS.md, "Downloaded video provenance")
+
+Public videos match the dataset for REAL, CD and CA. SV public videos carry the
+original audio, not the dataset's VITS voiceover. CE public videos are the
+uncut originals, not the dataset's TransNetV2-cut clips. Do not start the full
+download or build visual features until how CE (and SV) are handled is decided.
 
 ---
 
@@ -265,7 +276,10 @@ tqdm
 yt-dlp
 opencv-python
 open_clip_torch
+faster-whisper
 ```
+
+`ffmpeg` must be on PATH (`brew install ffmpeg` on macOS; preinstalled on Colab).
 
 ---
 
@@ -296,6 +310,8 @@ fmnvd/
 
   # video pipeline (Phase 2), one job per file, in run order
   download_videos.py         # yt-dlp: video_id → videos/
+  verify_downloads.py        # whisper vs data.json transcript, per category
+  verify_results.txt         # output table of verify_downloads.py
   sample_frames.py           # videos/ → sampled frames
   extract_clip_features.py   # frames → CLIP features in features/video/
   extract_motion_features.py # clips → 3D ResNeXt-101 features in features/video/

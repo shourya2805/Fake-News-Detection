@@ -137,3 +137,72 @@ the following implementation details are ours:
   flag is passed; and 65% of *real* samples also have transcripts, so presence is
   not by itself a discriminative shortcut. The correlation is real and documented,
   but it is not a large exploitable leak on this split.
+
+## Downloaded video provenance (`download_videos.py`, `verify_downloads.py`)
+The paper's own video files are distributed only via Baidu Netdisk. We re-download
+from the public YouTube / X posts named by `video_id`, which is only valid if the
+public post is the same version the dataset was built from. This was checked.
+
+- **Method.** For each downloaded video, ffmpeg extracts 16 kHz mono audio,
+  faster-whisper (`base`, int8 on CPU, beam 5, language auto-detected) transcribes
+  it, and the result is compared to that record's `audio_transcript` in
+  `data.json` after lower-casing and stripping punctuation. Two scores:
+  *token overlap* = multiset intersection / stored-transcript token count (how
+  much of the stored transcript is recovered from our audio), and the `difflib`
+  `SequenceMatcher` ratio on the token sequences (also penalises length and order
+  differences). Records with an empty stored transcript are skipped.
+- **Sample.** YouTube IDs only (no cookies needed), records with a non-empty
+  transcript only, first N in `data.json` order: 10 each of REAL, CD, CE, SV, and
+  10 of the 12 CA YouTube IDs. 50 videos scored. X-hosted videos (1,795 of
+  2,393) are untested.
+- **Chance baseline.** Each stored transcript scored against the Whisper output
+  of every *other* downloaded video: token overlap 0.217-0.254, difflib
+  0.047-0.053. Token overlap has a high floor because common words are shared
+  between any two English news transcripts.
+
+| Category | n | overlap mean | overlap median | overlap chance | difflib mean | difflib median | difflib chance |
+|---|---|---|---|---|---|---|---|
+| REAL | 10 | 0.781 | 0.940 | 0.217 | 0.780 | 0.924 | 0.047 |
+| CD | 10 | 0.843 | 0.921 | 0.253 | 0.841 | 0.931 | 0.053 |
+| CE | 10 | 0.620 | 0.675 | 0.239 | 0.325 | 0.344 | 0.047 |
+| SV | 10 | 0.410 | 0.456 | 0.254 | 0.216 | 0.168 | 0.052 |
+| CA | 10 | 0.961 | 0.966 | 0.227 | 0.958 | 0.963 | 0.052 |
+
+Per-video numbers are in `verify_results.txt`.
+
+- **Explanation from the paper's generation tools.**
+  - **CD** — ERNIE 4.0 rewrote only the title; video and audio are untouched.
+    Scores match REAL, as expected. Public videos are the dataset's videos.
+  - **CA** — highest agreement of all (0.96 / 0.96): public videos are the
+    dataset's videos. Only 12 CA records are on YouTube; the other 138 are on X
+    and untested.
+  - **SV** — audio replaced with a VITS voiceover of rewritten text. Overlap is
+    only ~0.16-0.20 above chance and difflib ~0.17 above chance. Side-by-side
+    reading confirms the stored text is a rewrite over the same footage (e.g.
+    `2AKezIUdMSc`: public audio "the best female breaker in Australia", stored
+    "a world record in underwater basket weaving"). The public post carries the
+    original audio; the frames are expected to be the original ones. Several SV
+    public videos also transcribe to ~2x the stored token count, so some SV
+    clips may additionally be shorter than the public post; frame identity is
+    not directly verified by this audio test.
+  - **CE** — cut with TransNetV2. Stored transcripts are ~half the length of
+    the public audio and paraphrased, giving moderate token overlap (0.62) but
+    low difflib (0.33). The public post is the uncut original; the dataset's CE
+    frames are a different, shorter edit.
+- **Consequence for the visual branch.** Public videos are usable as-is for
+  REAL, CD and CA. SV is usable for frames only; its downloaded audio must never
+  be used (speech features always come from `data.json`). CE public videos do
+  not match the dataset's frames.
+  In `data.json` this is REAL 893 + CD 600 + CA 150 = 1,643 records whose public
+  video is expected to match (REAL 217 + CD 90 + CA 12 = 319 on YouTube), plus
+  SV 300 (82 on YouTube) usable for frames only. CE (450; 197 on YouTube) is not
+  reconstructible from public sources.
+- **Leakage risk if CE videos are left out.** Giving CE samples an all-zero
+  visual feature would make "no video => CE" a perfect shortcut, the same
+  failure mode as the transcript missingness. CE must not be handled by simply
+  masking out its videos.
+- **Measurement artefacts, not provenance failures.** `0zC0K0YZEzg` (REAL) and
+  `_qwLHlVjRyw` (CE) have stored transcripts of 10 and 5 tokens. Whisper stopped
+  partway through `_HC36OnL-6c` (REAL). `_mJs-T-aH14` (SV) was detected as
+  Norwegian Nynorsk and returned 23 tokens. These lower the means but no
+  category's conclusion depends on them.
