@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import multiprocessing as mp
 import re
 from collections import Counter
 from pathlib import Path
@@ -13,6 +14,9 @@ OUT_DIR = Path("videos")
 FAIL_LOG = OUT_DIR / "failed.csv"
 COVERAGE = OUT_DIR / "coverage.json"
 CATEGORY = {"": "REAL", "ft": "CD", "fv": "CE", "fa": "SV", "fc": "CA"}
+CLASS_CODES = {"real": "", "cd": "ft", "ce": "fv", "sv": "fa", "ca": "fc"}
+PROGRESS_EVERY = 25
+VIDEO_TIMEOUT = 300
 
 
 def video_id(url):
@@ -36,6 +40,7 @@ def options(vid, browser):
         "noplaylist": True,
         "playlist_items": "1",
         "retries": 3,
+        "socket_timeout": 30,
         "sleep_interval": 1,
         "max_sleep_interval": 3,
         "quiet": True,
@@ -47,26 +52,63 @@ def options(vid, browser):
     return opts
 
 
+def load_failures():
+    if not FAIL_LOG.exists():
+        return {}
+    with FAIL_LOG.open(newline="") as f:
+        return {row["video_id"]: row for row in csv.DictReader(f)}
+
+
+def save_failures(failures):
+    with FAIL_LOG.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["video_id", "url", "reason"])
+        writer.writeheader()
+        writer.writerows(failures[k] for k in sorted(failures))
+
+
+def fetch(url, vid, browser, queue):
+    try:
+        with YoutubeDL(options(vid, browser)) as ydl:
+            ydl.download([url])
+        queue.put(None)
+    except Exception as e:
+        queue.put(str(e).splitlines()[0][:200] or type(e).__name__)
+
+
+def attempt(url, vid, browser):
+    queue = mp.Queue()
+    proc = mp.Process(target=fetch, args=(url, vid, browser, queue))
+    proc.start()
+    proc.join(VIDEO_TIMEOUT)
+    if proc.is_alive():
+        proc.kill()
+        proc.join()
+        return f"timed out after {VIDEO_TIMEOUT}s"
+    try:
+        return queue.get(timeout=5)
+    except Exception:
+        return f"worker exited with code {proc.exitcode}"
+
+
 def download(urls, browser):
-    failures = []
+    failures = load_failures()
+    new_failures, ok, skipped = [], 0, 0
     for i, url in enumerate(urls, 1):
         vid = video_id(url)
-        if (OUT_DIR / f"{vid}.mp4").exists():
-            continue
-        try:
-            with YoutubeDL(options(vid, browser)) as ydl:
-                ydl.download([url])
-            print(f"[{i}/{len(urls)}] ok    {vid}")
-        except Exception as e:
-            reason = str(e).splitlines()[0][:200]
-            failures.append((vid, url, reason))
-            print(f"[{i}/{len(urls)}] FAIL  {vid}  {reason}")
-
-    with FAIL_LOG.open("w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["video_id", "url", "reason"])
-        writer.writerows(failures)
-    return failures
+        if (OUT_DIR / f"{vid}.mp4").exists() or vid in failures:
+            skipped += 1
+        else:
+            reason = attempt(url, vid, browser)
+            if reason is None:
+                ok += 1
+            else:
+                failures[vid] = {"video_id": vid, "url": url, "reason": reason}
+                new_failures.append(failures[vid])
+                save_failures(failures)
+        if i % PROGRESS_EVERY == 0 or i == len(urls):
+            print(f"[{i}/{len(urls)}] ok {ok}  failed {len(new_failures)}  skipped {skipped}", flush=True)
+    save_failures(failures)
+    return new_failures
 
 
 def report():
@@ -88,10 +130,18 @@ def report():
         print(f"{k:<8}{v['have']:>7}{v['total']:>7}{v['pct']:>7}%")
 
 
+def filter_classes(urls, classes):
+    wanted = {CLASS_CODES[c] for c in classes}
+    records = json.loads(DATA_JSON.read_text())
+    keep = {r["video_id"] for r in records if r["class"] in wanted}
+    return [u for u in urls if video_id(u) in keep]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cookies-from-browser", dest="browser")
     parser.add_argument("--source", choices=["youtube", "x", "all"], default="all")
+    parser.add_argument("--classes", nargs="+", choices=sorted(CLASS_CODES))
     parser.add_argument("--limit", type=int)
     args = parser.parse_args()
 
@@ -101,6 +151,8 @@ def main():
         urls = [u for u in urls if "youtube.com" in u]
     elif args.source == "x":
         urls = [u for u in urls if "x.com" in u]
+    if args.classes:
+        urls = filter_classes(urls, args.classes)
     if args.limit:
         urls = urls[: args.limit]
 
