@@ -12,6 +12,8 @@ Mappings (confirmed by the counts, which match the paper's 893/600/450/300/150):
 
 import json
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -31,6 +33,9 @@ CATEGORY_MAP = {                              # paper name -> code
 }
 FAKE_CATEGORIES = ["CD", "CE", "SV", "CA"]
 CATEGORIES = ["REAL"] + FAKE_CATEGORIES
+
+VIDEO_DIR = Path("videos")
+VISUAL_CATEGORIES = ["REAL", "CD", "CA"]
 
 SEED = 42
 SPLIT_RATIOS = (0.70, 0.15, 0.15)             # train / val / test
@@ -99,6 +104,24 @@ def make_splits(records, ratios=SPLIT_RATIOS, seed=SEED):
         "val": [records[i] for i in sorted(val_idx)],
         "test": [records[i] for i in sorted(test_idx)],
     }
+
+
+def video_path(record, video_dir=VIDEO_DIR):
+    return Path(video_dir) / f"{record['video_id']}.mp4"
+
+
+def build_visual_subset(records=None, video_dir=VIDEO_DIR):
+    records = records if records is not None else load_records()
+    return [
+        r for r in records
+        if r["category"] in VISUAL_CATEGORIES
+        and video_path(r, video_dir).is_file()
+        and video_path(r, video_dir).stat().st_size > 0
+    ]
+
+
+def make_visual_splits(video_dir=VIDEO_DIR, ratios=SPLIT_RATIOS, seed=SEED):
+    return make_splits(build_visual_subset(video_dir=video_dir), ratios, seed)
 
 
 class FMNVDDataset(Dataset):
@@ -239,5 +262,40 @@ def main():
         print(f"{name:<8}" + "".join(row))
 
 
+def visual_report():
+    subset = build_visual_subset()
+    splits = make_splits(subset)
+    eligible = [r for r in load_records() if r["category"] in VISUAL_CATEGORIES]
+
+    print(f"visual subset                 : {len(subset)} of {len(eligible)} REAL+CD+CA records with video")
+    print(f"split seed                    : {SEED}")
+    print(f"split ratios (train/val/test) : "
+          f"{SPLIT_RATIOS[0]:.0%}/{SPLIT_RATIOS[1]:.0%}/{SPLIT_RATIOS[2]:.0%}"
+          f"  (stratified on REAL/CD/CA)")
+    print()
+
+    print(f"{'split':<8}{'n':>6}{'%':>7}   "
+          + "".join(f"{c:>6}" for c in VISUAL_CATEGORIES)
+          + f"{'real':>7}{'fake':>7}{'%fake':>8}")
+    for name, recs in list(splits.items()) + [("ALL", subset)]:
+        cat = _counts(recs, "category")
+        lab = _counts(recs, "label")
+        real, fake = lab.get(0, 0), lab.get(1, 0)
+        print(f"{name:<8}{len(recs):>6}{len(recs) / len(subset):>7.1%}   "
+              + "".join(f"{cat.get(c, 0):>6}" for c in VISUAL_CATEGORIES)
+              + f"{real:>7}{fake:>7}{fake / len(recs):>8.1%}")
+    print()
+
+    ids = [set(r["index"] for r in recs) for recs in splits.values()]
+    disjoint = not (ids[0] & ids[1] or ids[0] & ids[2] or ids[1] & ids[2])
+    covered = set().union(*ids) == {r["index"] for r in subset}
+    print(f"CHECK splits disjoint         : {disjoint}")
+    print(f"CHECK splits cover subset     : {covered}")
+    print(f"CHECK no CE/SV in subset      : {all(r['category'] in VISUAL_CATEGORIES for r in subset)}")
+
+
 if __name__ == "__main__":
-    main()
+    if "--visual" in sys.argv[1:]:
+        visual_report()
+    else:
+        main()
