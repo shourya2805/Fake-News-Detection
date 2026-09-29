@@ -17,6 +17,12 @@ CATEGORY = {"": "REAL", "ft": "CD", "fv": "CE", "fa": "SV", "fc": "CA"}
 CLASS_CODES = {"real": "", "cd": "ft", "ce": "fv", "sv": "fa", "ca": "fc"}
 PROGRESS_EVERY = 25
 VIDEO_TIMEOUT = 300
+MIN_VIDEO_BYTES = 10 * 1024
+PERMANENT_MARKERS = ["No video could be found", "Private video", "Video unavailable", "Video is unavailable"]
+TRANSIENT_MARKERS = [
+    "SSL", "CERTIFICATE_VERIFY_FAILED", "nodename nor servname", "Name or service not known",
+    "Temporary failure in name resolution", "timed out", "HTTP Error 403",
+]
 
 
 def video_id(url):
@@ -46,22 +52,40 @@ def options(vid, browser):
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
+        "overwrites": True,
     }
     if browser:
         opts["cookiesfrombrowser"] = (browser,)
     return opts
 
 
+def classify(reason):
+    text = reason.lower()
+    if any(m.lower() in text for m in PERMANENT_MARKERS):
+        return "permanent"
+    if any(m.lower() in text for m in TRANSIENT_MARKERS):
+        return "transient"
+    return "unknown"
+
+
+def has_video(vid):
+    path = OUT_DIR / f"{vid}.mp4"
+    return path.is_file() and path.stat().st_size > MIN_VIDEO_BYTES
+
+
 def load_failures():
     if not FAIL_LOG.exists():
         return {}
     with FAIL_LOG.open(newline="") as f:
-        return {row["video_id"]: row for row in csv.DictReader(f)}
+        rows = {row["video_id"]: row for row in csv.DictReader(f)}
+    for row in rows.values():
+        row["kind"] = classify(row["reason"])
+    return rows
 
 
 def save_failures(failures):
     with FAIL_LOG.open("w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["video_id", "url", "reason"])
+        writer = csv.DictWriter(f, fieldnames=["video_id", "url", "kind", "reason"])
         writer.writeheader()
         writer.writerows(failures[k] for k in sorted(failures))
 
@@ -90,19 +114,28 @@ def attempt(url, vid, browser):
         return f"worker exited with code {proc.exitcode}"
 
 
-def download(urls, browser):
+def should_skip(vid, failures, retry_failed):
+    if has_video(vid):
+        return True
+    return not retry_failed and failures.get(vid, {}).get("kind") == "permanent"
+
+
+def download(urls, browser, retry_failed=False):
     failures = load_failures()
     new_failures, ok, skipped = [], 0, 0
     for i, url in enumerate(urls, 1):
         vid = video_id(url)
-        if (OUT_DIR / f"{vid}.mp4").exists() or vid in failures:
+        if should_skip(vid, failures, retry_failed):
             skipped += 1
         else:
             reason = attempt(url, vid, browser)
-            if reason is None:
+            if reason is None and has_video(vid):
                 ok += 1
+                if failures.pop(vid, None):
+                    save_failures(failures)
             else:
-                failures[vid] = {"video_id": vid, "url": url, "reason": reason}
+                reason = reason or f"output missing or under {MIN_VIDEO_BYTES} bytes"
+                failures[vid] = {"video_id": vid, "url": url, "kind": classify(reason), "reason": reason}
                 new_failures.append(failures[vid])
                 save_failures(failures)
         if i % PROGRESS_EVERY == 0 or i == len(urls):
@@ -137,12 +170,30 @@ def filter_classes(urls, classes):
     return [u for u in urls if video_id(u) in keep]
 
 
+def filter_categories(urls, categories):
+    records = json.loads(DATA_JSON.read_text())
+    keep = {r["video_id"] for r in records if CATEGORY[r["class"]] in categories}
+    return [u for u in urls if video_id(u) in keep]
+
+
+def parse_categories(value):
+    categories = {c.strip().upper() for c in value.split(",") if c.strip()}
+    unknown = categories - set(CATEGORY.values())
+    if unknown or not categories:
+        raise argparse.ArgumentTypeError(
+            f"unknown categories {sorted(unknown)}; choose from {','.join(CATEGORY.values())}"
+        )
+    return categories
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cookies-from-browser", dest="browser")
     parser.add_argument("--source", choices=["youtube", "x", "all"], default="all")
     parser.add_argument("--classes", nargs="+", choices=sorted(CLASS_CODES))
+    parser.add_argument("--categories", type=parse_categories, default=set(CATEGORY.values()))
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--retry-failed", action="store_true")
     args = parser.parse_args()
 
     OUT_DIR.mkdir(exist_ok=True)
@@ -153,10 +204,11 @@ def main():
         urls = [u for u in urls if "x.com" in u]
     if args.classes:
         urls = filter_classes(urls, args.classes)
+    urls = filter_categories(urls, args.categories)
     if args.limit:
         urls = urls[: args.limit]
 
-    failures = download(urls, args.browser)
+    failures = download(urls, args.browser, args.retry_failed)
     print(f"\n{len(failures)} failed this run -> {FAIL_LOG}")
     report()
 
