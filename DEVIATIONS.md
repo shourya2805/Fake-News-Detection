@@ -266,3 +266,11 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   SV is out of the visual experiment unless a per-video length filter is adopted.
 - **The text-only reproduction on all 2,393 records is unaffected and remains
   the headline result.**
+- **Final visual subset: 1,510 records (REAL 820, CD 552, CA 138)** after 8%
+  download attrition, uniform across the three categories (91.8% / 92.0% /
+  92.0% retained). Class balance is 45.7% fake against 62.7% in the full
+  dataset, because CE and SV are excluded (majority baseline 54.3% vs 62.7%).
+  The visual experiment is therefore not comparable to the full reproduction;
+  the text-only model is retrained on the identical frozen split
+  (`splits/visual_split.json`, seed 42, 70/15/15 stratified on REAL/CD/CA:
+  1,057 / 226 / 227) to provide the baseline.
