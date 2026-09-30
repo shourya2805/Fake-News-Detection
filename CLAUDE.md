@@ -312,9 +312,10 @@ fmnvd/
   download_videos.py         # yt-dlp: video_id → videos/
   verify_downloads.py        # whisper vs data.json transcript, per category
   verify_results.txt         # output table of verify_downloads.py
-  sample_frames.py           # videos/ → sampled frames
-  extract_clip_features.py   # frames → CLIP features in features/video/
-  extract_motion_features.py # clips → 3D ResNeXt-101 features in features/video/
+  extract_clip.py            # videos/ → 55 sampled frames → CLIP features in features/video/
+  extract_motion.py          # videos/ → 55 aligned 8-frame clips → 3D ResNeXt-101 features in features/video/
+  modules/resnext3d.py       # 3D ResNeXt-101 (Hara et al.) definition + checkpoint loader
+  weights/                   # pretrained checkpoints (never committed)
 ```
 
 File names in the video pipeline are the plan; update this section if they

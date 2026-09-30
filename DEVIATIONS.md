@@ -294,3 +294,32 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   float32 and stored as float16. Output per video `(55, 512)`; consolidated
   `features/video/clip_features.npy` is `(1510, 55, 512)` float16 in frozen-split
   order, with ids in `clip_ids.json`.
+
+## Motion features (`extract_motion.py`)
+
+- **Checkpoint:** `resnext-101-kinetics.pth` from Hara et al. (CVPR 2018,
+  3D-ResNets-PyTorch, "old pretrained models" Google Drive folder, file id
+  `1cULocPe5YvPGWU4tV5t6fC9rJdGLfkWe`, sha256 `f82e4e51…ffe48326`).
+  ResNeXt-101 32×4d, shortcut B, trained on Kinetics-400 with 16-frame 112×112
+  clips (epoch 251). Architecture reimplemented in `modules/resnext3d.py` to
+  match the authors' `models/resnext.py`; weights load with `strict=True`.
+  The paper does not name a checkpoint; this is the standard one from that work.
+  The 64-frame variant (`resnext-101-64f-kinetics.pth`) was not used.
+- **Clip sampling:** 55 clips of 8 consecutive frames, centred on the same 55
+  indices `extract_clip.py` samples (the window is `c-4 … c+3`, shifted inward
+  at the video's ends; the frame count N is taken from `clip_meta.json` so both
+  streams use identical indices). Videos shorter than 8 frames loop-pad the
+  clip, as the authors' `LoopPadding` does.
+- **Clip length differs from training:** the network was trained on 16-frame
+  clips; we feed 8. Its temporal stride collapses both to a single temporal
+  position before pooling, so the 2048-d output is well-defined, but the
+  features are not identical to 16-frame features.
+- **Feature:** 2048-d global-average-pooled output of `layer4`, before `fc`
+  (equivalent to the authors' `--mode feature`); adaptive pooling replaces their
+  fixed `AvgPool3d((1, 4, 4))`, which gives the same result at 112×112.
+- **Preprocessing (differs from CLIP):** RGB, bilinear resize of the short side
+  to 112, center crop 112×112, pixel values kept in 0–255 and mean-subtracted
+  with the authors' ActivityNet mean `[114.7748, 107.7354, 99.4750]`, no std
+  division — exactly the transform in Hara's `video-classification-3d-cnn-pytorch`
+  feature extractor. CLIP instead uses bicubic 224 crops, [0,1] scaling and
+  mean/std normalisation. Stored as float16, `(55, 2048)` per video.

@@ -8,3 +8,4 @@ opencv-python
 open_clip_torch
 faster-whisper
 scipy
+gdown

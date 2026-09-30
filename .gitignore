@@ -9,6 +9,7 @@ __pycache__/
 *.pyc
 .venv/
 checkpoints/
+weights/
 results.json
 .claude/settings.local.json
 
