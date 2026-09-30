@@ -323,3 +323,36 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   division — exactly the transform in Hara's `video-classification-3d-cnn-pytorch`
   feature extractor. CLIP instead uses bicubic 224 crops, [0,1] scaling and
   mean/std normalisation. Stored as float16, `(55, 2048)` per video.
+
+## Visual branch (`model.py`, `modalities="full"`)
+
+- **The video stays a 55-step sequence through the gate and `co_attention_tv`;
+  it is mean-pooled only afterwards (option a).** The authors' `FMNVD.py`
+  mean-pools motion and CLIP features to length 1 *before* the gate, yet builds
+  `co_attention_tv` with `visual_len=55`. We follow the paper and the
+  `visual_len` setting rather than the pooling line: eq. 1–4 define motion, CLIP
+  and the gate per time step `t`, and eq. 8 has the title attend to "visual
+  frame features F_v ∈ ℝ^{L_v×d}", a sequence. Pooling first would also make the
+  title→visual attention degenerate: with a single key, softmax is always 1, so
+  every title token receives the same projected vector and the co-attention
+  carries no alignment information. The literal code path (option b) is
+  available as a one-line change if an ablation is wanted.
+- **Gate is computed per time step:** `α_t = σ(W[F_m,t; F_s,t] + b)` with
+  `linear_attn = Linear(256, 1) → Sigmoid`, giving a `(B, 55, 1)` gate.
+- **`co_attention_tv` uses the same settings as `co_attention_ts`**
+  (`d_k = d_v = 32`). Note: the authors' file actually passes `d_k = d_v = dim =
+  128` to both co-attentions, which contradicts the earlier entry in this file
+  that the value "is never given". Phase 1 is settled with 32, so the visual
+  co-attention matches it for consistency.
+- **No visual mask.** Every record in the frozen visual subset has a real video,
+  so `co_attention_tv` gets `v_len=None` and the visual stream is a plain mean.
+- **Fusion order `(title, speech, visual)` → `(B, 3, 128)`**, taken from the
+  authors' `torch.cat((fea_title, fea_speech, fea_visual), 1)`. The title fed to
+  `co_attention_tv` is the output of `co_attention_ts` (the "enhanced title" F_t′
+  of eq. 8).
+- **Classifier is a single `Linear(128, 2)`** as in the authors' code; the
+  paper's eq. 10 says "MLP" but does not define one.
+- **Parameter counts:** text 922,754; full 1,383,555 (+460,801: `linear_motion`
+  262,272, `linear_clip` 65,664, gate 257, `co_attention_tv` 132,608). The
+  text-only model is bit-identical to Phase 1 (same init, same outputs, existing
+  checkpoints load strictly).
