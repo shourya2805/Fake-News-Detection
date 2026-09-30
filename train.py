@@ -128,6 +128,10 @@ def evaluate(model, loader, device, criterion, records, fake_categories=FAKE_CAT
 
 def evaluate_visual(model, loader, device, criterion, records):
     loss, y_true, y_pred = run_epoch(model, loader, device, criterion)
+    return {"loss": loss, **visual_metrics(y_true, y_pred, records)}
+
+
+def visual_metrics(y_true, y_pred, records):
     categories = np.array([r["category"] for r in records])
     overall = metrics(y_true, y_pred)
     overall.update(n=int(len(y_true)), n_fake=int(y_true.sum()),
@@ -141,7 +145,7 @@ def evaluate_visual(model, loader, device, criterion, records):
         "accuracy": 100 * accuracy_score(y_true[real], y_pred[real]),
         "n": int(real.sum()), "n_fake": 0, "majority_acc": 100.0,
     }
-    return {"loss": loss, "overall": overall, "per_category": per_category}
+    return {"overall": overall, "per_category": per_category}
 
 
 def transcript_only_baseline(records):

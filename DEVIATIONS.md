@@ -412,3 +412,37 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   Eight comparisons are reported (2 checkpoints × 4 metrics); no
   multiple-comparison correction is applied, and none survives Bonferroni
   (0.05 / 8 = 0.006).
+
+## Tier 1 enhancement: class-balanced loss + threshold tuning (`enhance.py`)
+
+Architecture unchanged (d_k = 32). Neither technique is in the paper; both are
+our additions, evaluated as an ablation on the frozen visual split.
+
+- **Class weights are computed from the training split only:** inverse class
+  frequency, normalised so the mean of the two class weights is 1. Train counts
+  real/fake 574/483 give weights **real 0.9139, fake 1.0861**. The imbalance in
+  the visual subset is mild (45.7% fake), so the weights are close to 1.
+  Weighted and unweighted runs use the same code path and the same RNG
+  sequence; only the `CrossEntropyLoss` weight differs.
+- **Threshold is tuned on the validation split only:** predict fake iff
+  `p_fake > t`, sweeping t from 0.05 to 0.95 in steps of 0.01 (91 values) and
+  keeping the t with the highest validation macro F1. Ties go to the t closest
+  to 0.5. The chosen t is then applied unchanged to the test split; the test
+  split is never used for tuning.
+- **Checkpoint selection is unchanged** (best validation macro F1 at argmax,
+  i.e. t = 0.5). The threshold is tuned afterwards on the same validation set,
+  so "threshold only" differs from the baseline in the threshold alone. The
+  validation F1 at the tuned threshold is optimistic by construction and is not
+  used for any comparison.
+- **The four combinations need only two trainings per model and seed**
+  (unweighted, weighted); thresholding is post-hoc. The full model was run on
+  all four combinations rather than only the "best" one, so no combination was
+  selected by looking at test results.
+- **Reproduces the multi-seed study:** the baseline cells equal
+  `results_multiseed.json` (text_dk32, full_dk32, best checkpoint) exactly for
+  every seed.
+- **Chosen thresholds vary widely across seeds** (text 0.28–0.68, full
+  0.16–0.67), so the tuned threshold is not a stable property of the model on a
+  226-sample validation set.
+- **Eight cells (four combinations × two models) and three paired comparisons
+  are reported without multiple-comparison correction.**
