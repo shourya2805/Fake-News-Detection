@@ -24,9 +24,12 @@ Appended to as the reproduction is built.
 ## Co-attention module (`modules/coattention.py`)
 The paper gives only equations 5-7 and the authors never uploaded the file, so
 the following implementation details are ours:
-- **d_k = d_v = d_model / n_heads = 32** (128 / 4). The paper names `d_k` in the
-  scaling term but never gives its value; equal splitting is the standard
-  Transformer convention.
+- **d_k = d_v = 32 (d_model / n_heads). ERROR IN OUR RECORD — corrected.** This
+  entry originally said the value was unspecified. That was wrong: the authors'
+  released `FMNVD.py` passes `d_k = d_v = dim = 128` to both co-attention modules
+  (with `n_heads = 4`). Phase 1 used 32 per head, which does not match the
+  authors' code. `model.py` now takes a `d_k` option; both 32 and 128 are run on
+  the frozen visual split (see "Visual-split training").
 - **Per-head projections + an output `Linear(n_heads*d_v, d_model)`** after head
   concatenation, as in Vaswani et al. The paper's eq. 5 writes single-head
   attention only.
@@ -339,11 +342,9 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   available as a one-line change if an ablation is wanted.
 - **Gate is computed per time step:** `α_t = σ(W[F_m,t; F_s,t] + b)` with
   `linear_attn = Linear(256, 1) → Sigmoid`, giving a `(B, 55, 1)` gate.
-- **`co_attention_tv` uses the same settings as `co_attention_ts`**
-  (`d_k = d_v = 32`). Note: the authors' file actually passes `d_k = d_v = dim =
-  128` to both co-attentions, which contradicts the earlier entry in this file
-  that the value "is never given". Phase 1 is settled with 32, so the visual
-  co-attention matches it for consistency.
+- **`co_attention_tv` uses the same `d_k` as `co_attention_ts`**, set by the
+  model's `d_k` option (default 32, the Phase 1 value; the authors' file uses
+  128 — see the corrected co-attention entry above).
 - **No visual mask.** Every record in the frozen visual subset has a real video,
   so `co_attention_tv` gets `v_len=None` and the visual stream is a plain mean.
 - **Fusion order `(title, speech, visual)` → `(B, 3, 128)`**, taken from the
@@ -356,3 +357,39 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   262,272, `linear_clip` 65,664, gate 257, `co_attention_tv` 132,608). The
   text-only model is bit-identical to Phase 1 (same init, same outputs, existing
   checkpoints load strictly).
+
+## Visual-split training (`train.py --subset visual`)
+
+- **Four configurations on the frozen visual split** (1,057 / 226 / 227, seed
+  42): text-only and full model, each at `d_k = 32` (Phase 1) and `d_k = 128`
+  (authors' file). Same seed, same DataLoader generator, same hyperparameters as
+  Phase 1 (Adam 1e-3, batch 128, 30 epochs, cross-entropy). Two runs produce
+  identical `results_visual.json`.
+- **No `has_transcript` input** in these runs; the flag stays a Phase 1 leakage
+  probe.
+- **Both the best-val-macro-F1 checkpoint and the epoch-30 model are reported.**
+  The paper does not say which it reports; with a 226-sample validation set the
+  two differ by up to ~5 points, so neither is presented alone.
+- **Per-category rows are REAL+CD and REAL+CA** (real samples plus that
+  category's fakes, as in Phase 1). A "REAL only" row reports accuracy on real
+  samples (specificity); F1/P/R are undefined there with a single class.
+- **Majority baseline printed beside every accuracy:** accuracy of always
+  predicting real on that exact subset (54.19% overall on the test split,
+  59.7% on REAL+CD, 85.4% on REAL+CA).
+- **Single seed, 227 test samples:** one sample is 0.44 points and the 95%
+  binomial interval on ~75% accuracy is roughly ±5.6 points. Differences
+  between the four configurations are within that range.
+
+## Environment drift: torch upgrade breaks bit-reproduction of Phase 1
+
+- Installing `open_clip_torch` on 2026-09-30 upgraded torch to 2.14.0. Rerunning
+  the unchanged Phase 1 path (`python train.py`) no longer reproduces the
+  committed `results.json` bit for bit: epoch-1 losses differ at ~1e-8, which
+  compounds over 30 epochs (without flag: best epoch 21 → 27, test accuracy
+  77.16 → 76.60, macro F1 74.34 → 74.23; with flag: accuracy 75.21 → 76.60,
+  macro F1 72.43 → 74.13).
+- The pre- and post-change `train.py` produce bit-identical epoch-1 results
+  under torch 2.14.0, so the drift is from the library, not from the Phase 2
+  code. Runs remain deterministic within one environment. `results.json` is
+  kept as the recorded Phase 1 result; the torch version used for it was not
+  recorded.

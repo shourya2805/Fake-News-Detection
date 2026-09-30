@@ -38,6 +38,8 @@ CATEGORIES = ["REAL"] + FAKE_CATEGORIES
 VIDEO_DIR = Path("videos")
 VISUAL_CATEGORIES = ["REAL", "CD", "CA"]
 VISUAL_SPLIT_PATH = Path("splits/visual_split.json")
+VISUAL_FEATURE_DIR = Path("features/video")
+VISUAL_FEATURE_FILES = {"clip": "clip", "motion": "motion"}
 
 SEED = 42
 SPLIT_RATIOS = (0.70, 0.15, 0.15)             # train / val / test
@@ -175,9 +177,15 @@ class FMNVDDataset(Dataset):
     mask (written that way by `extract_features.py`) — never silent padding.
     """
 
-    def __init__(self, records, feature_dir=FEATURE_DIR, features=None):
+    def __init__(self, records, feature_dir=FEATURE_DIR, features=None, visual=None):
         self.records = records
         self.features = features if features is not None else load_features(feature_dir)
+        self.visual = visual
+        if visual is not None:
+            missing = [r["video_id"] for r in records if r["video_id"] not in visual["row"]]
+            if missing:
+                raise ValueError(f"{len(missing)} records have no visual features, e.g. {missing[:3]}")
+            self.visual_rows = np.array([visual["row"][r["video_id"]] for r in records], dtype=np.int64)
         self.indices = np.array([r["index"] for r in records], dtype=np.int64)
         self.labels = np.array([r["label"] for r in records], dtype=np.int64)
         self.has_transcript = np.array(
@@ -190,7 +198,7 @@ class FMNVDDataset(Dataset):
     def __getitem__(self, i):
         j = self.indices[i]
         f = self.features
-        return {
+        item = {
             "title": torch.from_numpy(np.asarray(f["title_emb"][j], dtype=np.float32)),
             "title_mask": torch.from_numpy(
                 np.asarray(f["title_mask"][j], dtype=np.float32)
@@ -204,6 +212,11 @@ class FMNVDDataset(Dataset):
             "has_transcript": torch.tensor(self.has_transcript[i]),
             "label": torch.tensor(self.labels[i]),
         }
+        if self.visual is not None:
+            k = self.visual_rows[i]
+            item["clip"] = torch.from_numpy(np.asarray(self.visual["clip"][k], dtype=np.float32))
+            item["motion"] = torch.from_numpy(np.asarray(self.visual["motion"][k], dtype=np.float32))
+        return item
 
 
 FEATURE_FILES = ["title_emb", "title_mask", "transcript_emb", "transcript_mask"]
@@ -225,6 +238,21 @@ def load_features(feature_dir=FEATURE_DIR, mmap=True):
                    mmap_mode="r" if mmap else None)
         for n in FEATURE_FILES
     }
+
+
+def load_visual_features(records=None, feature_dir=VISUAL_FEATURE_DIR, mmap=False):
+    order = [r["video_id"] for r in (records if records is not None else build_visual_subset())]
+    out = {}
+    for key, stem in VISUAL_FEATURE_FILES.items():
+        ids = json.loads((Path(feature_dir) / f"{stem}_ids.json").read_text())
+        if ids != order:
+            raise ValueError(f"{stem}_ids.json does not match the frozen visual split order")
+        out[key] = np.load(Path(feature_dir) / f"{stem}_features.npy", mmap_mode="r" if mmap else None)
+        if len(out[key]) != len(order):
+            raise ValueError(f"{stem}_features.npy has {len(out[key])} rows, expected {len(order)}")
+    out["ids"] = order
+    out["row"] = {v: i for i, v in enumerate(order)}
+    return out
 
 
 # --------------------------------------------------------------------------- #

@@ -4,7 +4,10 @@ Dimensions are taken verbatim from the authors' `FMNVD.py`:
 
     text_dim = 768, title_length = 32, speech_text_length = 64,
     clip_dim = 512, motion_dim = 2048, num_frames = 55,
-    dim = 128, dropout = 0.1, num_heads = 4
+    dim = 128, dropout = 0.1, num_heads = 4, d_k = d_v = 128
+
+d_k defaults to dim // num_heads = 32 (the Phase 1 value); pass d_k=128 for the
+authors' setting.
 
 modalities="text" (paper's "w/o Frames" ablation):
 
@@ -47,12 +50,15 @@ class FMNVD(nn.Module):
                  num_heads=NUM_HEADS, title_length=TITLE_LENGTH,
                  speech_text_length=SPEECH_TEXT_LENGTH, num_classes=2,
                  use_has_transcript=False, modalities="text",
-                 clip_dim=CLIP_DIM, motion_dim=MOTION_DIM, num_frames=NUM_FRAMES):
+                 clip_dim=CLIP_DIM, motion_dim=MOTION_DIM, num_frames=NUM_FRAMES,
+                 d_k=None):
         super().__init__()
         if modalities not in MODALITIES:
             raise ValueError(f"modalities must be one of {MODALITIES}, got {modalities!r}")
         self.use_has_transcript = use_has_transcript
         self.modalities = modalities
+        d_k = d_k or dim // num_heads
+        self.d_k = d_k
 
         self.linear_title = nn.Sequential(
             nn.Linear(text_dim, dim), nn.ReLU(), nn.Dropout(dropout)
@@ -62,7 +68,7 @@ class FMNVD(nn.Module):
         )
 
         self.co_attention_ts = co_attention(
-            d_k=dim // num_heads, d_v=dim // num_heads, n_heads=num_heads,
+            d_k=d_k, d_v=d_k, n_heads=num_heads,
             dropout=dropout, d_model=dim,
             visual_len=speech_text_length, sen_len=title_length,
             fea_v=dim, fea_s=dim, pos=False,
@@ -86,7 +92,7 @@ class FMNVD(nn.Module):
                 nn.Linear(dim * 2, 1), nn.Sigmoid()
             )
             self.co_attention_tv = co_attention(
-                d_k=dim // num_heads, d_v=dim // num_heads, n_heads=num_heads,
+                d_k=d_k, d_v=d_k, n_heads=num_heads,
                 dropout=dropout, d_model=dim,
                 visual_len=num_frames, sen_len=title_length,
                 fea_v=dim, fea_s=dim, pos=False,
