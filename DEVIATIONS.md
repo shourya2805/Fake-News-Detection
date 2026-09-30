@@ -274,3 +274,23 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   the text-only model is retrained on the identical frozen split
   (`splits/visual_split.json`, seed 42, 70/15/15 stratified on REAL/CD/CA:
   1,057 / 226 / 227) to provide the baseline.
+
+## CLIP frame features (`extract_clip.py`)
+
+- **Frame sampling:** 55 frames per video at indices
+  `round(linspace(0, N-1, 55))` over the OpenCV frame count N, decoded
+  sequentially (grab every frame, decode only the selected ones). If the stream
+  ends before the reported count, indices are recomputed over the frames
+  actually decoded.
+- **Padding rule:** videos with N < 55 frames get repeated indices from the same
+  linspace, i.e. frames are repeated in temporal order (not zero-padded, not
+  last-frame padded). Such videos are listed in `features/video/clip_meta.json`
+  under `padded`.
+- **Preprocessing / encoder:** open_clip `ViT-B-32-quickgelu` with OpenAI
+  weights (the QuickGELU variant matches how those weights were trained), frozen,
+  eval mode. Standard CLIP transform: BGR→RGB, bicubic resize of the short side
+  to 224, center crop 224×224, CLIP mean/std normalisation. Feature is the
+  projected `encode_image` output (512-d, not L2-normalised), computed in
+  float32 and stored as float16. Output per video `(55, 512)`; consolidated
+  `features/video/clip_features.npy` is `(1510, 55, 512)` float16 in frozen-split
+  order, with ids in `clip_ids.json`.
