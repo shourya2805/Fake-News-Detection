@@ -16,3 +16,4 @@ results.json
 x_cookies.txt
 sophos.pem
 combined-ca.pem
+runs/

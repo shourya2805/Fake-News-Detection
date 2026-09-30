@@ -161,7 +161,8 @@ def transcript_only_baseline(records):
 
 
 def run_experiment(use_flag, splits, features, device, epochs, seed,
-                   modalities="text", d_k=None, visual=None, tag=None, label=None):
+                   modalities="text", d_k=None, visual=None, tag=None, label=None,
+                   save_checkpoints=True):
     tag = tag or ("with_flag" if use_flag else "without_flag")
     label = label or ("WITH has_transcript" if use_flag else "WITHOUT has_transcript")
     print(f"\n{'=' * 74}\nRUN: {label}\n{'=' * 74}")
@@ -215,11 +216,13 @@ def run_experiment(use_flag, splits, features, device, epochs, seed,
     }
     if visual is not None:
         result.update(modalities=modalities, d_k=model.d_k)
-        torch.save(model.state_dict(), os.path.join(CHECKPOINT_DIR, f"last_{tag}.pt"))
+        if save_checkpoints:
+            torch.save(model.state_dict(), os.path.join(CHECKPOINT_DIR, f"last_{tag}.pt"))
         result["test_last"] = evaluate_visual(model, loaders["test"], device, criterion, splits["test"])
 
     model.load_state_dict(best_state)
-    torch.save(best_state, os.path.join(CHECKPOINT_DIR, f"best_{tag}.pt"))
+    if save_checkpoints:
+        torch.save(best_state, os.path.join(CHECKPOINT_DIR, f"best_{tag}.pt"))
 
     if visual is not None:
         result["test"] = evaluate_visual(model, loaders["test"], device, criterion, splits["test"])

@@ -393,3 +393,22 @@ token count. REAL/CD/CA (stored >= 20 tokens) land at median 1.00, range
   code. Runs remain deterministic within one environment. `results.json` is
   kept as the recorded Phase 1 result; the torch version used for it was not
   recorded.
+
+## Multi-seed study (`multiseed.py`)
+
+- **Seeds 42–46, all four visual-split configurations, same frozen split** for
+  every seed (split file sha256 checked per seed). The seed changes only model
+  init, training shuffle order and dropout. Seed 42 reproduces
+  `results_visual.json` exactly.
+- **mean ± sample std (ddof = 1)** over 5 seeds, for the best-val-F1 checkpoint
+  and the epoch-30 model.
+- **Paired test for text vs full at d_k = 32:** paired t-test and Wilcoxon
+  signed-rank on the per-seed differences, with a t-based 95% CI. With n = 5
+  the smallest possible two-sided Wilcoxon p is 0.0625 (all five differences
+  the same sign), so it cannot reach 0.05 by construction.
+- **What the test does and does not cover:** it measures variation from training
+  randomness only. Every seed is scored on the same 227 test samples, so it says
+  nothing about how the difference would hold on a different test sample.
+  Eight comparisons are reported (2 checkpoints × 4 metrics); no
+  multiple-comparison correction is applied, and none survives Bonferroni
+  (0.05 / 8 = 0.006).

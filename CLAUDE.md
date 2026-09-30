@@ -307,6 +307,7 @@ fmnvd/
   extract_features.py        # BERT encode → features/
   train.py                   # train loop + overall/per-category eval
   test_smoke.py              # random tensors through model, shape check
+  multiseed.py               # 5-seed study on the frozen visual split → results_multiseed.json
 
   # video pipeline (Phase 2), one job per file, in run order
   download_videos.py         # yt-dlp: video_id → videos/
